@@ -1,0 +1,31 @@
+{
+  "name": "zero-wealth-tracker",
+  "version": "1.0.0",
+  "description": "Personal Wealth & Expense Tracker with responsive design for all devices",
+  "type": "module",
+  "main": "App.jsx",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "python -m http.server 5173"
+  },
+  "keywords": [
+    "wealth tracker",
+    "expense tracker",
+    "personal finance",
+    "react",
+    "responsive"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.0",
+    "vite": "^4.5.0"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "chart.js": "^4.4.1"
+  }
+}
