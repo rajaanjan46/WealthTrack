@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 
+const BREAKPOINTS = {
+  tablet: 768,
+  desktop: 1024,
+};
+
 const CATEGORIES = {
   income: ["Salary", "Freelance", "Investment", "Business", "Gift", "Other Income"],
   expense: ["Food", "Rent", "Transport", "Shopping", "Health", "Education", "Entertainment", "Utilities", "EMI", "Other"],
@@ -74,6 +79,24 @@ function generateId() {
 
 function today() {
   return new Date().toISOString().split("T")[0];
+}
+
+function useViewport() {
+  const getWidth = () => (typeof window === "undefined" ? BREAKPOINTS.desktop : window.innerWidth);
+  const [width, setWidth] = useState(getWidth);
+
+  useEffect(() => {
+    const onResize = () => setWidth(getWidth());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return {
+    width,
+    isMobile: width < BREAKPOINTS.tablet,
+    isTablet: width >= BREAKPOINTS.tablet && width < BREAKPOINTS.desktop,
+    isDesktop: width >= BREAKPOINTS.desktop,
+  };
 }
 
 function relativeDate(dateStr) {
@@ -238,7 +261,7 @@ function BarChart({ data }) {
 
 const EMPTY_FORM = { title: "", amount: "", category: "", type: "expense", date: today(), note: "" };
 
-function TransactionForm({ onSave, editTx, onCancelEdit }) {
+function TransactionForm({ onSave, editTx, onCancelEdit, viewport }) {
   const [form,   setForm]   = useState(editTx ? { ...editTx, amount: editTx.amount.toString() } : EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [warn,   setWarn]   = useState("");
@@ -310,8 +333,16 @@ function TransactionForm({ onSave, editTx, onCancelEdit }) {
   const isEdit = !!editTx;
 
   return (
-    <form onSubmit={handleSubmit} noValidate style={styles.form}>
-      <div style={styles.formHeader}>
+    <form
+      onSubmit={handleSubmit}
+      noValidate
+      style={{
+        ...styles.form,
+        padding: viewport.isMobile ? 16 : 20,
+        gap: viewport.isMobile ? 12 : 14,
+      }}
+    >
+      <div style={{ ...styles.formHeader, alignItems: viewport.isMobile ? "stretch" : "center" }}>
         <span style={styles.formTitle}>{isEdit ? "✏️ Edit Transaction" : "➕ New Transaction"}</span>
         {isEdit && (
           <button type="button" onClick={onCancelEdit} style={styles.cancelBtn}>✕ Cancel</button>
@@ -405,13 +436,21 @@ function TransactionForm({ onSave, editTx, onCancelEdit }) {
   );
 }
 
-function TxItem({ tx, onEdit, onDelete }) {
+function TxItem({ tx, onEdit, onDelete, viewport }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isIncome = tx.type === "income";
   const color    = CAT_COLORS[tx.category] || "#64748b";
+  const isMobile = viewport.isMobile;
 
   return (
-    <div style={styles.txItem}>
+    <div
+      style={{
+        ...styles.txItem,
+        gridTemplateColumns: isMobile ? "28px 1fr auto" : "3px 34px 1fr auto auto",
+        padding: isMobile ? "12px 12px 12px 16px" : styles.txItem.padding,
+        gap: isMobile ? 8 : 10,
+      }}
+    >
       <div style={{ ...styles.txBar, background: color }} />
 
       <div style={{ ...styles.txIcon, background: color + "22", border: `1px solid ${color}44` }}>
@@ -427,11 +466,26 @@ function TxItem({ tx, onEdit, onDelete }) {
         </div>
       </div>
 
-      <div style={{ ...styles.txAmount, color: isIncome ? "var(--green)" : "var(--red)" }}>
+      <div
+        style={{
+          ...styles.txAmount,
+          color: isIncome ? "var(--green)" : "var(--red)",
+          minWidth: isMobile ? 0 : 90,
+          fontSize: isMobile ? 12 : 13.5,
+          gridColumn: isMobile ? "2 / 3" : "auto",
+        }}
+      >
         {isIncome ? "+" : "−"}{formatINR(tx.amount)}
       </div>
 
-      <div style={styles.txActions}>
+      <div
+        style={{
+          ...styles.txActions,
+          gridColumn: isMobile ? "3 / 4" : "auto",
+          gridRow: isMobile ? "1 / 3" : "auto",
+          alignSelf: isMobile ? "center" : "auto",
+        }}
+      >
         {confirmDelete ? (
           <>
             <button style={styles.confirmBtn} onClick={() => onDelete(tx.id)}>Yes</button>
@@ -458,11 +512,16 @@ function getCatEmoji(cat) {
   return map[cat] || "📌";
 }
 
-function SummaryCards({ income, expense, balance }) {
+function SummaryCards({ income, expense, balance, viewport }) {
   return (
-    <div style={styles.cardsRow}>
-      <SummaryCard label="Total Income"   value={income}  icon="↑" color="var(--green)"  sub="All time earnings" />
-      <SummaryCard label="Total Expenses" value={expense} icon="↓" color="var(--red)"    sub="All time spending" />
+    <div
+      style={{
+        ...styles.cardsRow,
+        gridTemplateColumns: viewport.isMobile ? "1fr" : viewport.isTablet ? "1fr 1fr" : "1fr 1fr 1.2fr",
+      }}
+    >
+      <SummaryCard label="Total Income"   value={income}  icon="↑" color="var(--green)"  sub="All time earnings" viewport={viewport} />
+      <SummaryCard label="Total Expenses" value={expense} icon="↓" color="var(--red)"    sub="All time spending" viewport={viewport} />
       <SummaryCard
         label="Net Balance"
         value={balance}
@@ -470,20 +529,33 @@ function SummaryCards({ income, expense, balance }) {
         color={balance >= 0 ? "var(--blue)" : "var(--red)"}
         sub={balance >= 0 ? "You're in surplus 🎉" : "You're in deficit ⚠️"}
         large
+        viewport={viewport}
       />
     </div>
   );
 }
 
-function SummaryCard({ label, value, icon, color, sub, large }) {
+function SummaryCard({ label, value, icon, color, sub, large, viewport }) {
   const absVal = Math.abs(value);
   const displayVal = formatINR(absVal, absVal >= 1e7);
 
   return (
-    <div style={{ ...styles.summaryCard, ...(large ? styles.summaryCardLarge : {}) }}>
+    <div
+      style={{
+        ...styles.summaryCard,
+        ...(large ? styles.summaryCardLarge : {}),
+        padding: viewport.isMobile ? "16px" : "18px 20px",
+      }}
+    >
       <div style={{ ...styles.cardIcon, background: color + "18", color }}>{icon}</div>
       <div style={styles.cardLabel}>{label}</div>
-      <div style={{ ...styles.cardValue, color, fontSize: large ? 26 : 22 }}>
+      <div
+        style={{
+          ...styles.cardValue,
+          color,
+          fontSize: viewport.isMobile ? (large ? 22 : 18) : large ? 26 : 22,
+        }}
+      >
         {value < 0 && label === "Net Balance" ? "−" : ""}{displayVal}
       </div>
       <div style={styles.cardSub}>{sub}</div>
@@ -491,14 +563,14 @@ function SummaryCard({ label, value, icon, color, sub, large }) {
   );
 }
 
-function ChartSection({ expensesByCategory }) {
+function ChartSection({ expensesByCategory, viewport }) {
   const [chartType, setChartType] = useState("donut");
   const hasData = expensesByCategory.length > 0;
   const total   = expensesByCategory.reduce((s, d) => s + d.amount, 0);
 
   return (
-    <div style={styles.chartCard}>
-      <div style={styles.chartHeader}>
+    <div style={{ ...styles.chartCard, padding: viewport.isMobile ? 16 : 20 }}>
+      <div style={{ ...styles.chartHeader, alignItems: viewport.isMobile ? "stretch" : "center" }}>
         <span style={styles.sectionTitle}>Expense Breakdown</span>
         <div style={styles.chartToggle}>
           {["donut", "bar"].map((t) => (
@@ -519,11 +591,11 @@ function ChartSection({ expensesByCategory }) {
           <div style={{ color: "var(--t2)", fontSize: 13 }}>Add expenses to see your breakdown</div>
         </div>
       ) : (
-        <div style={styles.chartBody}>
-          <div style={styles.chartCanvas}>
-            {chartType === "donut" ? (
-              <DonutChart data={expensesByCategory} />
-            ) : (
+          <div style={styles.chartBody}>
+            <div style={{ ...styles.chartCanvas, height: viewport.isMobile ? 220 : 200 }}>
+              {chartType === "donut" ? (
+                <DonutChart data={expensesByCategory} />
+              ) : (
               <BarChart data={expensesByCategory} />
             )}
           </div>
@@ -547,7 +619,7 @@ function ChartSection({ expensesByCategory }) {
   );
 }
 
-function HistoryLog({ transactions, onEdit, onDelete, onClear }) {
+function HistoryLog({ transactions, onEdit, onDelete, onClear, viewport }) {
   const [search,    setSearch]    = useState("");
   const [filterType, setFilterType] = useState("all");
   const [sortBy,    setSortBy]    = useState("date_desc");
@@ -579,12 +651,18 @@ function HistoryLog({ transactions, onEdit, onDelete, onClear }) {
         <span style={styles.txCount}>{transactions.length} total</span>
       </div>
 
-      <div style={styles.historyControls}>
+      <div
+        style={{
+          ...styles.historyControls,
+          flexDirection: viewport.isMobile ? "column" : "row",
+          alignItems: viewport.isMobile ? "stretch" : "center",
+        }}
+      >
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="🔍 Search transactions..."
-          style={styles.searchInput}
+          style={{ ...styles.searchInput, minWidth: viewport.isMobile ? "100%" : 140 }}
         />
         <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={styles.controlSelect}>
           <option value="all">All</option>
@@ -618,7 +696,13 @@ function HistoryLog({ transactions, onEdit, onDelete, onClear }) {
       ) : (
         <div style={styles.txList}>
           {filtered.map((tx) => (
-            <TxItem key={tx.id} tx={tx} onEdit={onEdit} onDelete={onDelete} />
+            <TxItem
+              key={tx.id}
+              tx={tx}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              viewport={viewport}
+            />
           ))}
         </div>
       )}
@@ -633,6 +717,7 @@ function HistoryLog({ transactions, onEdit, onDelete, onClear }) {
 }
 
 export default function WealthTracker() {
+  const viewport = useViewport();
   const [transactions, setTransactions] = useState(loadTransactions);
   const [editTx,       setEditTx]       = useState(null);
   const [toast,        setToast]        = useState(null);
@@ -690,7 +775,8 @@ export default function WealthTracker() {
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { height: 100%; background: #0a0d14; }
-        body { font-family: 'DM Sans', sans-serif; color: #f1f5f9; }
+        body { font-family: 'DM Sans', sans-serif; color: #f1f5f9; overflow-x: hidden; }
+        button, input, select { font: inherit; }
         :root {
           --green:  #22c55e;
           --red:    #f43f5e;
@@ -732,7 +818,15 @@ export default function WealthTracker() {
 
       <div style={styles.app}>
         <header style={styles.header}>
-          <div style={styles.headerInner}>
+          <div
+            style={{
+              ...styles.headerInner,
+              padding: viewport.isMobile ? "12px 16px" : "14px 24px",
+              flexDirection: viewport.isMobile ? "column" : "row",
+              alignItems: viewport.isMobile ? "flex-start" : "center",
+              gap: viewport.isMobile ? 12 : 20,
+            }}
+          >
             <div>
               <div style={styles.appTitle}>
                 <span style={styles.appTitleIcon}>₹</span>
@@ -740,12 +834,20 @@ export default function WealthTracker() {
               </div>
               <div style={styles.appSubtitle}>Personal Finance Manager</div>
             </div>
-            <div style={styles.headerRight}>
+            <div
+              style={{
+                ...styles.headerRight,
+                display: viewport.isMobile ? "grid" : "flex",
+                width: viewport.isMobile ? "100%" : "auto",
+                gridTemplateColumns: viewport.isMobile ? "1fr 1fr" : undefined,
+                gap: viewport.isMobile ? 12 : 20,
+              }}
+            >
               <div style={styles.headerStat}>
                 <span style={styles.headerStatLabel}>Transactions</span>
-                <span style={styles.headerStatValue}>{transactions.length}</span>
+                <span style={{ ...styles.headerStatValue, fontSize: viewport.isMobile ? 14 : 15 }}>{transactions.length}</span>
               </div>
-              <div style={styles.headerDivider} />
+              {!viewport.isMobile && <div style={styles.headerDivider} />}
               <div style={styles.headerStat}>
                 <span style={styles.headerStatLabel}>Net Balance</span>
                 <span style={{ ...styles.headerStatValue, color: balance >= 0 ? "var(--green)" : "var(--red)" }}>
@@ -756,17 +858,24 @@ export default function WealthTracker() {
           </div>
         </header>
 
-        <main style={styles.main}>
-          <SummaryCards income={income} expense={expense} balance={balance} />
+        <main style={{ ...styles.main, padding: viewport.isMobile ? "16px" : "24px" }}>
+          <SummaryCards income={income} expense={expense} balance={balance} viewport={viewport} />
 
-          <div style={styles.twoCol}>
+          <div
+            style={{
+              ...styles.twoCol,
+              gridTemplateColumns: viewport.isMobile ? "1fr" : viewport.isTablet ? "320px 1fr" : "380px 1fr",
+              gap: viewport.isMobile ? 16 : 20,
+            }}
+          >
             <div style={styles.leftCol}>
               <TransactionForm
                 onSave={handleSave}
                 editTx={editTx}
                 onCancelEdit={() => setEditTx(null)}
+                viewport={viewport}
               />
-              <ChartSection expensesByCategory={expensesByCategory} />
+              <ChartSection expensesByCategory={expensesByCategory} viewport={viewport} />
             </div>
 
             <div style={styles.rightCol}>
@@ -775,6 +884,7 @@ export default function WealthTracker() {
                 onEdit={setEditTx}
                 onDelete={handleDelete}
                 onClear={handleClearAll}
+                viewport={viewport}
               />
             </div>
           </div>
